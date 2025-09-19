@@ -10,8 +10,8 @@ from langchain.schema import (AIMessage, HumanMessage, SystemMessage)
 from langchain_core.prompts import PromptTemplate
 from langchain_core.prompts import ChatPromptTemplate
 
-import psycopg2
 from pgvector.psycopg2 import register_vector
+from sqlalchemy import update, insert
 
 from chat.schemas import NewChat
 from users.sсhemas import CrateUser
@@ -20,12 +20,12 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from DBconn.db import get_async_session
+from DBconn.db import db_helper
 import asyncpg
 import os
-from models import Chat
+from models.models import Chat
+from chat.schemas import NewChat
 
-from DBconn.db import async_session_maker
 
 
 # def req_resp(chat:Chat):
@@ -97,26 +97,7 @@ async def newChat(newChat: NewChat, user: CrateUser):
     print(f"Создан чат с id: {new_chat_id} для пользователя: {user_id}")
     return {"success": True, "user": resp}
 
-async def test(chat_id: int, user: CrateUser, req: str, session: AsyncSession = Depends(get_async_session)):
 
-
-    sumnchat_value = await get_sumnchat(Chat.chat_id, session)
-    load_dotenv(find_dotenv())
-    chat = ChatGoogleGenerativeAI(model = "gemini-2.0-flash", temperature = 0.3)
-
-    memory = ConversationSummaryMemory(llm=chat)
-    memory.buffer = sumnchat_value
-    conversation = ConversationChain(llm=chat, memory=memory, verbose=True)
-
-
-    req = ""
-    
-    resp = conversation.run(req)
-    return {
-        "success": True,
-        "resp": resp,
-        "memory_buffer": memory.buffer
-    }
 
 async def get_sumnchat(chat_id: int, session: AsyncSession) -> str:
     result = await session.execute(select(Chat).where(Chat.id == chat_id))
@@ -124,3 +105,34 @@ async def get_sumnchat(chat_id: int, session: AsyncSession) -> str:
     if chat is None:
         raise ValueError("Chat not found")
     return chat.sumnChat
+
+
+async def update_sumnchat(
+    new_sumn: str,
+    chat_id: int,
+    session: AsyncSession = Depends(db_helper.session_getter)  # без скобок
+) -> str:
+    """
+    Обновляет строку sumnchat для указанного chat_id.
+    """
+    stmt = (
+        update(Chat)  # Здесь Chat — это ORM класс модели, например from yourapp.models import Chat
+        .where(Chat.id == chat_id)  # Обратите внимание на имя поля pk, обычно это id
+        .values(sumnChat=new_sumn)
+    )
+    await session.execute(stmt)
+    await session.commit()
+    return "success"
+
+async def newChatDB(new_sumn: str, user: CrateUser, session: AsyncSession):
+    stmt = (
+        insert(Chat)
+        .values(
+            user_id=user.user_id,            # <--- Добавьте это!
+            founder_username=user.username,
+            sumnChat=new_sumn
+        )
+    )
+    await session.execute(stmt)
+    await session.commit()
+    return "success"

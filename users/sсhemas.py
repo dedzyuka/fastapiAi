@@ -14,5 +14,6 @@ class PublicUser(BaseModel):
 class UserCreate(BaseModel):
     username: Annotated[str, MinLen(3), MaxLen(20)]
     password: str
+
     class Config:
         from_attributes = True
